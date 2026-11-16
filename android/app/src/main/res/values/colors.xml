@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="spent_paper">#f7f6f3</color>
+    <color name="colorPrimary">#4f7358</color>
+    <color name="colorPrimaryDark">#f7f6f3</color>
+    <color name="colorAccent">#4f7358</color>
+</resources>

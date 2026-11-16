@@ -1,0 +1,25 @@
+node_modules/
+www/
+native.bundle.js
+artifacts/
+.DS_Store
+
+# Local design-skill tooling, not part of the app
+.skillsrc/
+SKILLS-TODO.md
+
+# Android build output and local machine config
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+android/app/release/
+android/app/src/main/assets/
+android/app/src/main/res/xml/config.xml
+
+# Signing material never belongs in the repo
+*.jks
+*.keystore
+keystore.properties
+.env
+.env.*

@@ -1,0 +1,27 @@
+{
+  "name": "spent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Spent — a small expense tracker, kept plainly.",
+  "license": "MIT",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "icons": "npx capacitor-assets generate --android --assetPath resources && node scripts/android-icons.mjs",
+    "sync": "npm run build:web && npx cap sync android",
+    "android": "npm run sync && npx cap open android",
+    "serve": "python3 serve.py"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/keyboard": "^8.0.0",
+    "@capacitor/splash-screen": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.0",
+    "@capacitor/cli": "^8.0.0",
+    "esbuild": "^0.25.0"
+  }
+}

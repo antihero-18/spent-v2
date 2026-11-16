@@ -1,0 +1,27 @@
+{
+  "appId": "com.spent.app",
+  "appName": "Spent",
+  "webDir": "www",
+  "backgroundColor": "#f7f6f3",
+  "android": {
+    "backgroundColor": "#f7f6f3",
+    "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 0,
+      "launchAutoHide": true,
+      "backgroundColor": "#f7f6f3",
+      "showSpinner": false
+    },
+    "Keyboard": {
+      "resize": "native",
+      "resizeOnFullScreen": true
+    },
+    "StatusBar": {
+      "style": "LIGHT",
+      "backgroundColor": "#f7f6f3",
+      "overlaysWebView": false
+    }
+  }
+}

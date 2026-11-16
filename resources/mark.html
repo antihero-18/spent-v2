@@ -1,0 +1,29 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Spent mark</title>
+<style>
+  @font-face {
+    font-family: Mark;
+    src: url("/assets/instrument-serif.woff2") format("woff2");
+    font-display: block;
+  }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { display: grid; place-items: center; }
+  span {
+    font-family: Mark, Georgia, serif;
+    line-height: 1;
+    display: block;
+  }
+</style>
+<span>S</span>
+<script>
+  const q = new URLSearchParams(location.search);
+  const num = (name, fallback) => Number(q.get(name)) || fallback;
+  const size = num('size', 700);
+  document.documentElement.style.background = q.get('bg') || 'transparent';
+  document.body.style.background = q.get('bg') || 'transparent';
+  const glyph = document.querySelector('span');
+  glyph.style.fontSize = `${size}px`;
+  glyph.style.color = q.get('fg') || '#16161a';
+  glyph.style.paddingBottom = `${Math.round(size * 0.07)}px`;
+</script>
