@@ -1,0 +1,110 @@
+name: Android release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    name: Build signed APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK packages
+        run: sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Derive version from tag
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="0.0.0-dev.${GITHUB_RUN_NUMBER}"
+          fi
+          BASE="${VERSION%%-*}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "${BASE}"
+          CODE=$(( ${MAJOR:-0} * 10000 + ${MINOR:-0} * 100 + ${PATCH:-0} ))
+          # Android requires versionCode >= 1, which untagged dispatches would round to 0.
+          if [ "${CODE}" -lt 1 ]; then CODE=1; fi
+          {
+            echo "SPENT_VERSION_NAME=${VERSION}"
+            echo "SPENT_VERSION_CODE=${CODE}"
+          } >> "${GITHUB_ENV}"
+          echo "Building ${VERSION} (versionCode ${CODE})"
+
+      - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          if [ -z "${KEYSTORE_BASE64}" ]; then
+            echo "::warning::KEYSTORE_BASE64 is not set; the release build will be debug-signed and cannot be shipped."
+            exit 0
+          fi
+          echo "${KEYSTORE_BASE64}" | base64 --decode > android/app/spent-release.jks
+          {
+            echo "SPENT_KEYSTORE=${GITHUB_WORKSPACE}/android/app/spent-release.jks"
+            echo "SPENT_KEYSTORE_PASSWORD=${KEYSTORE_PASSWORD}"
+            echo "SPENT_KEY_ALIAS=${KEY_ALIAS}"
+            echo "SPENT_KEY_PASSWORD=${KEY_PASSWORD}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Sync web assets into the Android project
+        run: npm run sync
+
+      - name: Assemble release APK
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease --no-daemon \
+            -PspentVersionName="${SPENT_VERSION_NAME}" \
+            -PspentVersionCode="${SPENT_VERSION_CODE}"
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/Spent-${SPENT_VERSION_NAME}.apk"
+          ls -l dist
+          if [ -z "${SPENT_KEYSTORE}" ]; then
+            echo "APK is not signed with a release key." > dist/SIGNING.txt
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spent-apk-${{ env.SPENT_VERSION_NAME }}
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        if: github.ref_type == 'tag'
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Spent ${{ env.SPENT_VERSION_NAME }}
+          files: dist/*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true

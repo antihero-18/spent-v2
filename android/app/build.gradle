@@ -7,8 +7,8 @@ android {
         applicationId "com.spent.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "0.1.0"
+        versionCode (project.findProperty("spentVersionCode") ?: "1").toString().toInteger()
+        versionName (project.findProperty("spentVersionName") ?: "0.1.0").toString()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +16,23 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            // CI supplies these; a local build without them falls back to debug signing.
+            def storePath = System.getenv("SPENT_KEYSTORE")
+            if (storePath) {
+                storeFile file(storePath)
+                storePassword System.getenv("SPENT_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("SPENT_KEY_ALIAS")
+                keyPassword System.getenv("SPENT_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig (System.getenv("SPENT_KEYSTORE") ? signingConfigs.release : signingConfigs.debug)
         }
     }
 }

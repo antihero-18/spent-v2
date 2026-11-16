@@ -39,6 +39,35 @@ First build downloads Gradle 8.14.3 and needs JDK 17+ plus Android SDK 36 (Andro
 | `npm run android` | `sync` + `cap open android` |
 | `npm run icons` | regenerates launcher icons and splash screens |
 
+## Releasing an APK
+
+The workflow in `.github/workflows/android-release.yml` builds a signed, universal APK for every `v*` tag and attaches it to a GitHub Release. Pushing a tag is the whole release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The tag sets the name (`v0.1.0` → `0.1.0`) and the version code (`0.1.0` → `100`). A manual dispatch from the Actions tab builds the same APK as a downloadable artifact without publishing a release.
+
+Four repository secrets are needed (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+| --- | --- |
+| `KEYSTORE_BASE64` | `base64 -w0 spent-release.jks` output, one line |
+| `KEYSTORE_PASSWORD` | keystore password |
+| `KEY_ALIAS` | key alias, e.g. `spent` |
+| `KEY_PASSWORD` | key password |
+
+Create the keystore once, on your own machine, and keep it:
+
+```sh
+keytool -genkey -v -keystore spent-release.jks -alias spent -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 spent-release.jks > keystore.txt   # paste this into KEYSTORE_BASE64, then delete it
+```
+
+Lose the keystore and you cannot publish an update that installs over the previous APK, so keep a backup somewhere safe. Without `KEYSTORE_BASE64` the workflow still builds, but the APK is debug-signed and not fit to ship.
+
 ## Layout
 
 - `index.html`, `styles.css`, `spent.js` — the whole app. No framework, no bundler for the web side.
