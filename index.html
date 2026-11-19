@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#0b0b0c" media="(prefers-color-scheme: dark)">
 <link rel="icon" href="data:,">
 <link rel="preload" as="font" type="font/woff2" href="assets/instrument-serif.woff2" crossorigin>
-<link rel="stylesheet" href="styles.css?v=13">
+<link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
 <a class="skip" href="#list">Skip to the list</a>
@@ -56,13 +56,13 @@
           <p class="figure-total" id="total">$0.00</p>
           <p class="figure-lede" id="lede">Nothing logged yet</p>
         </div>
-        <div class="ring" id="ringWrap" role="img" aria-label="No budget set">
+        <button class="ring" id="ringWrap" type="button" aria-label="No budget set">
           <svg viewBox="0 0 80 80" aria-hidden="true" focusable="false">
             <circle class="ring-track" cx="40" cy="40" r="32"></circle>
             <circle class="ring-fill" id="ring" cx="40" cy="40" r="32"></circle>
           </svg>
           <span class="ring-note" id="ringPct">0%</span>
-        </div>
+        </button>
       </div>
 
       <div class="budgetline">
@@ -168,10 +168,13 @@
   </form>
 </section>
 
-<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div class="toast" id="toast">
+  <span class="toast-text" id="toastText" role="status" aria-live="polite"></span>
+  <button class="toast-action" id="toastAction" type="button" hidden>Undo</button>
+</div>
 
 <script src="storage.js"></script>
-<script src="spent.js?v=5"></script>
+<script src="spent.js?v=6"></script>
 <script type="module" src="native.bundle.js"></script>
 </body>
 </html>

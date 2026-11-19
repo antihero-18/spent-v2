@@ -65,9 +65,13 @@ const el = {
   catChips: document.getElementById('catChips'),
   openSheet: document.getElementById('openSheet'),
   sheet: document.getElementById('sheet'),
+  sheetTitle: document.getElementById('sheetTitle'),
+  submitBtn: document.querySelector('#form button[type="submit"]'),
   scrim: document.getElementById('scrim'),
   cancel: document.getElementById('cancel'),
   toast: document.getElementById('toast'),
+  toastText: document.getElementById('toastText'),
+  toastAction: document.getElementById('toastAction'),
 };
 
 const params = new URLSearchParams(location.search);
@@ -101,6 +105,7 @@ let lastFocus = null;
 let whenISO = todayISO();
 let whenMin = nowMinutes();
 let whenView = whenISO.slice(0, 7);
+let editingId = null;
 
 /* ── Storage ───────────────────────────────────────────── */
 
@@ -193,6 +198,11 @@ function prettyDate(iso) {
   return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function hhmmToMinutes(hhmm) {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
 function minutesToHHMM(total) {
   const m = ((total % 1440) + 1440) % 1440;
   return `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
@@ -206,21 +216,67 @@ function prettyTime(hhmm) {
 }
 
 function parseMoney(value) {
-  const raw = String(value).trim().replace(/[^0-9.]/g, '');
+  let raw = String(value).trim().replace(/[\s\u00a0']/g, '');
+  raw = raw.replace(/[^0-9.,]/g, '');
   if (!raw) return NaN;
+
+  if (raw.includes(',') && !raw.includes('.')) {
+    // A comma alone only counts as a thousands separator: 1,234 is fine, 12,50 is not.
+    if (!/^\d{1,3}(,\d{3})+$/.test(raw)) return NaN;
+    raw = raw.replace(/,/g, '');
+  } else if (raw.includes(',') && raw.includes('.')) {
+    // Both present: whichever comes last is the decimal mark.
+    const decimal = raw.lastIndexOf('.') > raw.lastIndexOf(',') ? '.' : ',';
+    const at = raw.lastIndexOf(decimal);
+    raw = raw.slice(0, at).replace(/[.,]/g, '') + raw.slice(at).replace(',', '.');
+  } else if ((raw.match(/\./g) || []).length > 1) {
+    const at = raw.lastIndexOf('.');
+    raw = raw.slice(0, at).replace(/\./g, '') + raw.slice(at);
+  }
+
   const n = Number.parseFloat(raw);
   return Number.isFinite(n) ? Math.round(n * 100) : NaN;
 }
 
 let toastTimer = 0;
-function toast(message) {
-  el.toast.textContent = message;
+let toastAction = null;
+
+function toast(message, actionLabel, onAction) {
+  el.toastText.textContent = message;
+  toastAction = onAction || null;
+  el.toastAction.hidden = !actionLabel;
+  if (actionLabel) el.toastAction.textContent = actionLabel;
   el.toast.classList.add('show');
   window.clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => el.toast.classList.remove('show'), 2400);
+  toastTimer = window.setTimeout(dismissToast, actionLabel ? 5200 : 2400);
 }
 
+function dismissToast() {
+  el.toast.classList.remove('show');
+  toastAction = null;
+  el.toastAction.hidden = true;
+}
+
+el.toastAction.addEventListener('click', () => {
+  const run = toastAction;
+  dismissToast();
+  if (run) run();
+});
+
 /* ── Render ────────────────────────────────────────────── */
+
+// A month without its own budget keeps the last one that was set before it.
+function budgetFor(key) {
+  if (Object.prototype.hasOwnProperty.call(state.budgets, key)) return Number(state.budgets[key]) || 0;
+  const earlier = Object.keys(state.budgets).filter((k) => k < key && state.budgets[k]).sort();
+  return earlier.length ? Number(state.budgets[earlier[earlier.length - 1]]) : 0;
+}
+
+function paintChips() {
+  el.catChips.querySelectorAll('.chip').forEach((chip) => {
+    chip.setAttribute('aria-pressed', chip.dataset.cat === selectedCat ? 'true' : 'false');
+  });
+}
 
 function render() {
   const label = monthLabel(month);
@@ -249,7 +305,7 @@ function render() {
     ? `${catLabel(topCat)} leads · ${money(perDay)} a day · ${monthItems.length} ${monthItems.length === 1 ? 'entry' : 'entries'}`
     : `Nothing logged in ${label}`;
 
-  const budget = Number(state.budgets[month]) || 0;
+  const budget = budgetFor(month);
   if (document.activeElement !== el.budget) {
     el.budget.value = budget ? (budget / 100).toFixed(2) : '';
   }
@@ -292,9 +348,7 @@ function render() {
   el.tabs.querySelectorAll('.tab').forEach((tab) => {
     tab.setAttribute('aria-pressed', tab.dataset.filter === filter ? 'true' : 'false');
   });
-  el.catChips.querySelectorAll('.chip').forEach((chip) => {
-    chip.setAttribute('aria-pressed', chip.dataset.cat === selectedCat ? 'true' : 'false');
-  });
+  paintChips();
 
   moveInk();
   if (!el.calendar.hidden) renderCalendar();
@@ -341,6 +395,9 @@ function row(it) {
   const li = document.createElement('li');
   li.className = 'item';
   li.dataset.cat = it.cat;
+  li.dataset.id = it.id;
+  li.tabIndex = 0;
+  li.setAttribute('aria-label', `Edit ${it.note || catLabel(it.cat)}, ${money(it.amount)}`);
 
   const dot = document.createElement('span');
   dot.className = 'dot';
@@ -457,8 +514,9 @@ el.next.addEventListener('click', () => shiftMonth(1));
 
 /* ── Sheet ─────────────────────────────────────────────── */
 
-function openSheet() {
+function openSheet(item) {
   lastFocus = document.activeElement;
+  editingId = item ? item.id : null;
   el.sheet.hidden = false;
   el.scrim.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -469,12 +527,21 @@ function openSheet() {
   sheetOpen = true;
   el.amountErr.hidden = true;
   el.amount.setAttribute('aria-invalid', 'false');
-  whenISO = todayISO();
-  whenMin = nowMinutes();
+  el.sheetTitle.textContent = item ? 'Edit expense' : 'New expense';
+  el.submitBtn.textContent = item ? 'Save changes' : 'Add expense';
+  el.amount.value = item ? (item.amount / 100).toFixed(2) : '';
+  el.note.value = item ? item.note || '' : '';
+  selectedCat = item ? item.cat : 'food';
+  whenISO = item ? item.date : todayISO();
+  whenMin = item && item.time ? hhmmToMinutes(item.time) : nowMinutes();
   whenView = whenISO.slice(0, 7);
   closeWhen();
   renderWhen();
-  window.setTimeout(() => el.amount.focus(), 120);
+  paintChips();
+  window.setTimeout(() => {
+    el.amount.focus();
+    if (item) el.amount.select();
+  }, 120);
 }
 
 function closeSheet() {
@@ -490,7 +557,7 @@ function closeSheet() {
   if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
 }
 
-el.openSheet.addEventListener('click', openSheet);
+el.openSheet.addEventListener('click', () => openSheet());
 el.cancel.addEventListener('click', closeSheet);
 el.scrim.addEventListener('click', closeSheet);
 
@@ -504,6 +571,11 @@ document.addEventListener('keydown', (event) => {
   }
   if (event.key === 'Escape') {
     event.preventDefault();
+    if (!el.whenPanel.hidden) {
+      closeWhen();
+      el.whenBtn.focus();
+      return;
+    }
     closeSheet();
     return;
   }
@@ -538,12 +610,19 @@ el.form.addEventListener('submit', (event) => {
   }
 
   const cat = CATS.some((c) => c.id === selectedCat) ? selectedCat : 'other';
-  const date = whenISO;
+  const date = whenISO > todayISO() ? todayISO() : whenISO;
   const note = el.note.value.trim().slice(0, 80) || catLabel(cat);
   const time = minutesToHHMM(whenMin);
+  const editing = editingId;
 
-  state.items.push({ id: String(Date.now()), amount, cat, note, date, time });
+  if (editing) {
+    const it = state.items.find((x) => x.id === editing);
+    if (it) Object.assign(it, { amount, cat, note, date, time });
+  } else {
+    state.items.push({ id: String(Date.now()), amount, cat, note, date, time });
+  }
   save();
+  editingId = null;
 
   month = date.slice(0, 7);
   if (filter !== 'all' && filter !== cat) filter = 'all';
@@ -552,26 +631,51 @@ el.form.addEventListener('submit', (event) => {
   el.note.value = '';
   closeSheet();
   render();
-  toast(`Added ${money(amount)} · ${catLabel(cat)}`);
+  toast(`${editing ? 'Saved' : 'Added'} ${money(amount)} · ${catLabel(cat)}`);
 });
 
-el.items.addEventListener('click', (event) => {
-  const btn = event.target.closest('.del');
-  if (!btn) return;
-  const id = btn.dataset.id;
+let armedRow = null;
+
+function disarmRow() {
+  if (!armedRow) return;
+  const { li, keep } = armedRow;
+  li.classList.remove('armed');
+  const del = li.querySelector('.del');
+  if (del) del.textContent = '×';
+  if (keep) keep.remove();
+  armedRow = null;
+}
+
+function armRow(li, id) {
+  disarmRow();
+  const del = li.querySelector('.del');
+  const keep = document.createElement('button');
+  keep.type = 'button';
+  keep.className = 'keep';
+  keep.textContent = 'Keep';
+  del.before(keep);
+  li.classList.add('armed');
+  del.textContent = 'Delete';
+  armedRow = { li, id, keep };
+}
+
+function removeItem(id, li) {
   const gone = state.items.find((it) => it.id === id);
   if (!gone) return;
 
-  const li = btn.closest('.item');
-  const remove = () => {
+  const drop = () => {
     state.items = state.items.filter((it) => it.id !== id);
     save();
     render();
-    toast(`Deleted ${gone.note || catLabel(gone.cat)}`);
+    toast(`Deleted ${gone.note || catLabel(gone.cat)}`, 'Undo', () => {
+      state.items.push(gone);
+      save();
+      render();
+    });
   };
 
   if (reduced || !li) {
-    remove();
+    drop();
     return;
   }
 
@@ -584,19 +688,57 @@ el.items.addEventListener('click', (event) => {
     ],
     { duration: 220, easing: 'cubic-bezier(.32,.72,0,1)', fill: 'forwards' }
   )
-    .finished.then(remove)
-    .catch(remove);
+    .finished.then(drop)
+    .catch(drop);
+}
+
+el.items.addEventListener('click', (event) => {
+  if (event.target.closest('.keep')) {
+    disarmRow();
+    return;
+  }
+
+  const del = event.target.closest('.del');
+  const li = event.target.closest('.item');
+  if (!li) return;
+
+  if (del) {
+    const id = del.dataset.id;
+    if (!armedRow || armedRow.id !== id) {
+      armRow(li, id);
+      return;
+    }
+    disarmRow();
+    removeItem(id, li);
+    return;
+  }
+
+  disarmRow();
+  openSheet(state.items.find((it) => it.id === li.dataset.id));
+});
+
+el.items.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  if (event.target.closest('button')) return;
+  const li = event.target.closest('.item');
+  if (!li) return;
+  event.preventDefault();
+  disarmRow();
+  openSheet(state.items.find((it) => it.id === li.dataset.id));
 });
 
 el.budget.addEventListener('change', () => {
   const cents = parseMoney(el.budget.value);
-  if (!Number.isFinite(cents) || cents <= 0) {
-    delete state.budgets[month];
-  } else {
-    state.budgets[month] = cents;
-  }
+  // An explicit 0 means "no budget this month", rather than inheriting again.
+  state.budgets[month] = Number.isFinite(cents) && cents > 0 ? cents : 0;
   save();
   render();
+});
+
+el.ringWrap.addEventListener('click', () => {
+  el.budget.focus();
+  el.budget.select();
+  el.budget.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
 });
 
 el.budget.addEventListener('keydown', (event) => {
@@ -651,6 +793,8 @@ function renderWhenGrid() {
     btn.type = 'button';
     btn.className = 'cal-day-btn';
     btn.dataset.iso = iso;
+    const future = iso > todayISO();
+    btn.disabled = future;
     btn.setAttribute('aria-pressed', iso === whenISO ? 'true' : 'false');
     btn.setAttribute(
       'aria-label',
@@ -659,11 +803,13 @@ function renderWhenGrid() {
     const num = document.createElement('span');
     num.textContent = String(d);
     btn.append(num);
-    btn.addEventListener('click', () => {
-      whenISO = iso;
-      whenView = iso.slice(0, 7);
-      renderWhen();
-    });
+    if (!future) {
+      btn.addEventListener('click', () => {
+        whenISO = iso;
+        whenView = iso.slice(0, 7);
+        renderWhen();
+      });
+    }
     frag.append(btn);
   }
   el.whenGrid.replaceChildren(frag);
@@ -863,6 +1009,10 @@ document.addEventListener('click', (event) => {
 /* Hooks for the Android shell (native.js); inert in a browser. */
 window.SpentNative = {
   back() {
+    if (sheetOpen && !el.whenPanel.hidden) {
+      closeWhen();
+      return true;
+    }
     if (sheetOpen) {
       closeSheet();
       return true;
