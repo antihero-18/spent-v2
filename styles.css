@@ -56,6 +56,23 @@
   [data-cat="other"] { --cat: #9c9ca2; }
 }
 
+/* Custom categories: six muted tones, pale enough to sit beside the fixed six. */
+[data-tone="1"] { --cat: #7b5a86; }
+[data-tone="2"] { --cat: #9a5468; }
+[data-tone="3"] { --cat: #6d7440; }
+[data-tone="4"] { --cat: #8f7526; }
+[data-tone="5"] { --cat: #566577; }
+[data-tone="6"] { --cat: #4b5a8c; }
+
+@media (prefers-color-scheme: dark) {
+  [data-tone="1"] { --cat: #b79ec0; }
+  [data-tone="2"] { --cat: #cf93a4; }
+  [data-tone="3"] { --cat: #adb575; }
+  [data-tone="4"] { --cat: #cbb56a; }
+  [data-tone="5"] { --cat: #93a5b8; }
+  [data-tone="6"] { --cat: #8f9dd0; }
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 
 html {
@@ -103,7 +120,18 @@ body {
   gap: 12px;
 }
 
-.wordmark { margin: 0; font-size: 15px; font-weight: 600; letter-spacing: 0.005em; }
+.wordmark {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  /* Long-pressing the wordmark is the way in to deleting everything, so the
+     press must not turn into a text selection or a callout. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  cursor: default;
+}
 .top-note { margin: 0; font-size: 11px; color: var(--muted); letter-spacing: 0.01em; }
 
 /* ── Period ────────────────────────────────────────────── */
@@ -728,6 +756,39 @@ body {
 .chip:active { transform: scale(0.96); }
 .chip[aria-pressed="true"] { color: var(--paper); background: var(--ink); border-color: var(--ink); }
 .chip:focus-visible { outline: 2px solid var(--sage); outline-offset: 2px; }
+.chip[hidden] { display: none; }
+
+.chip-new { color: var(--muted); border-style: dashed; }
+.chip-new:hover { color: var(--ink); }
+
+.chip-form { display: flex; flex: 1 1 100%; align-items: center; gap: 4px; }
+.chip-input {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 0;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--hair-strong);
+  border-radius: 0;
+}
+.chip-input::placeholder { color: var(--muted); }
+.chip-input:focus { outline: none; border-bottom-color: var(--sage); }
+.chip-confirm, .chip-cancel {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12.5px;
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.chip-confirm { font-weight: 600; color: var(--ink); }
+.chip-cancel { color: var(--muted); }
+.chip-confirm:focus-visible, .chip-cancel:focus-visible { outline: 2px solid var(--sage); outline-offset: 1px; }
 
 .btn {
   width: 100%;

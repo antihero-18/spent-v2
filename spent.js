@@ -9,6 +9,10 @@ const CATS = [
   { id: 'other', label: 'Other' },
 ];
 
+// Custom categories pick one of six muted tones, so they sit next to the fixed
+// six instead of introducing a new colour for every word the user types.
+const TONES = 6;
+
 const KEY = 'tally.v1';
 const RING = 2 * Math.PI * 32;
 const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -70,6 +74,7 @@ const el = {
   scrim: document.getElementById('scrim'),
   cancel: document.getElementById('cancel'),
   toast: document.getElementById('toast'),
+  wordmark: document.getElementById('wordmark'),
   toastText: document.getElementById('toastText'),
   toastAction: document.getElementById('toastAction'),
 };
@@ -110,7 +115,7 @@ let editingId = null;
 /* ── Storage ───────────────────────────────────────────── */
 
 function load() {
-  const blank = { items: [], budgets: {} };
+  const blank = { items: [], budgets: {}, cats: [] };
   try {
     const raw = JSON.parse(store.read() || '{}');
     if (!raw || typeof raw !== 'object') return blank;
@@ -126,7 +131,24 @@ function load() {
         )
       : [];
     const budgets = raw.budgets && typeof raw.budgets === 'object' ? raw.budgets : {};
-    return { items, budgets };
+    const cats = Array.isArray(raw.cats)
+      ? raw.cats
+          .filter(
+            (c) =>
+              c &&
+              typeof c.id === 'string' &&
+              /^c-/.test(c.id) &&
+              typeof c.label === 'string' &&
+              c.label.trim() &&
+              !CATS.some((base) => base.id === c.id)
+          )
+          .map((c) => ({
+            id: c.id,
+            label: c.label.trim().slice(0, 20),
+            tone: Number.isInteger(c.tone) && c.tone >= 1 && c.tone <= TONES ? c.tone : 1,
+          }))
+      : [];
+    return { items, budgets, cats };
   } catch {
     return blank;
   }
@@ -152,6 +174,7 @@ function fixtureState() {
       { id: 'f4', amount: 8999, cat: 'home', note: 'Desk lamp', date: `${m}-03`, time: '16:10' },
     ],
     budgets: { [m]: 60000 },
+    cats: [],
   };
 }
 
@@ -189,9 +212,25 @@ function daysIn(m) {
 
 const money = (cents) => usd.format(cents / 100);
 
+function allCats() {
+  return (state.cats || []).length ? CATS.concat(state.cats) : CATS;
+}
+
+function catInfo(id) {
+  return allCats().find((c) => c.id === id) || null;
+}
+
 function catLabel(id) {
-  const found = CATS.find((c) => c.id === id);
+  const found = catInfo(id);
   return found ? found.label : 'Other';
+}
+
+// A category's colour lives in CSS (--cat); custom ones carry their tone along.
+function paintCat(node, id) {
+  node.dataset.cat = id;
+  const found = catInfo(id);
+  if (found && found.tone) node.dataset.tone = String(found.tone);
+  else delete node.dataset.tone;
 }
 
 function prettyDate(iso) {
@@ -279,8 +318,11 @@ function paintChips() {
 }
 
 function render() {
+  disarmRow();
   const label = monthLabel(month);
   el.monthLabel.textContent = label;
+
+  renderTabs();
 
   const monthItems = state.items.filter((it) => it.date.startsWith(month));
   const shown = filter === 'all' ? monthItems : monthItems.filter((it) => it.cat === filter);
@@ -370,7 +412,7 @@ function renderBreakdown(byCat, total) {
   for (const r of rows) {
     const segment = document.createElement('span');
     segment.className = 'segpart';
-    segment.dataset.cat = r.cat;
+    paintCat(segment, r.cat);
     segment.style.flexGrow = '0';
     el.split.append(segment);
     requestAnimationFrame(() => {
@@ -378,7 +420,7 @@ function renderBreakdown(byCat, total) {
     });
 
     const li = document.createElement('li');
-    li.dataset.cat = r.cat;
+    paintCat(li, r.cat);
     const dot = document.createElement('span');
     dot.className = 'dot';
     dot.setAttribute('aria-hidden', 'true');
@@ -394,7 +436,7 @@ function renderBreakdown(byCat, total) {
 function row(it) {
   const li = document.createElement('li');
   li.className = 'item';
-  li.dataset.cat = it.cat;
+  paintCat(li, it.cat);
   li.dataset.id = it.id;
   li.tabIndex = 0;
   li.setAttribute('aria-label', `Edit ${it.note || catLabel(it.cat)}, ${money(it.amount)}`);
@@ -437,35 +479,155 @@ function moveInk() {
   el.tabInk.style.transform = `translateX(${active.offsetLeft}px)`;
 }
 
-const FILTERS = [{ id: 'all', label: 'All' }, ...CATS.map((c) => ({ id: c.id, label: c.label }))];
-for (const f of FILTERS) {
-  const tab = document.createElement('button');
-  tab.type = 'button';
-  tab.className = 'tab';
-  tab.dataset.filter = f.id;
-  tab.textContent = f.label;
-  tab.setAttribute('aria-pressed', 'false');
-  tab.addEventListener('click', () => {
-    filter = f.id;
-    render();
-  });
-  el.tabs.append(tab);
+let tabsKey = '';
+
+// Tabs are rebuilt only when the category set changes: rebuilding on every
+// render would throw away focus and restart the ink transition.
+function renderTabs() {
+  const cats = allCats();
+  const key = cats.map((c) => c.id + ':' + c.label).join('|');
+  if (key === tabsKey) return;
+  tabsKey = key;
+
+  const frag = document.createDocumentFragment();
+  for (const f of [{ id: 'all', label: 'All' }, ...cats]) {
+    const tab = document.createElement('button');
+    tab.type = 'button';
+    tab.className = 'tab';
+    tab.dataset.filter = f.id;
+    tab.textContent = f.label;
+    tab.setAttribute('aria-pressed', f.id === filter ? 'true' : 'false');
+    tab.addEventListener('click', () => {
+      filter = f.id;
+      render();
+    });
+    frag.append(tab);
+  }
+  // The ink is absolutely positioned, so it can stay at the end of the row.
+  el.tabs.replaceChildren(frag, el.tabInk);
 }
 
-for (const cat of CATS) {
-  const chip = document.createElement('button');
-  chip.type = 'button';
-  chip.className = 'chip';
-  chip.dataset.cat = cat.id;
-  chip.textContent = cat.label;
-  chip.setAttribute('aria-pressed', 'false');
-  chip.addEventListener('click', () => {
-    selectedCat = cat.id;
-    el.catChips.querySelectorAll('.chip').forEach((c) => {
-      c.setAttribute('aria-pressed', c.dataset.cat === selectedCat ? 'true' : 'false');
+function renderChips() {
+  const frag = document.createDocumentFragment();
+  for (const cat of allCats()) {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'chip';
+    chip.dataset.cat = cat.id;
+    chip.textContent = cat.label;
+    chip.setAttribute('aria-pressed', 'false');
+    chip.addEventListener('click', () => {
+      selectedCat = cat.id;
+      paintChips();
     });
+    frag.append(chip);
+  }
+
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'chip chip-new';
+  add.textContent = '+ New';
+  add.setAttribute('aria-label', 'New category');
+  add.addEventListener('click', openNewCat);
+  frag.append(add);
+
+  el.catChips.replaceChildren(frag);
+  paintChips();
+}
+
+/* ── Custom categories ─────────────────────────────────── */
+
+function nextTone() {
+  const used = new Map();
+  for (const c of state.cats) used.set(c.tone, (used.get(c.tone) || 0) + 1);
+  let best = 1;
+  for (let t = 1; t <= TONES; t++) {
+    if ((used.get(t) || 0) < (used.get(best) || 0)) best = t;
+  }
+  return best;
+}
+
+function openNewCat() {
+  if (el.catChips.querySelector('.chip-form')) return;
+  el.catChips.querySelectorAll('.chip').forEach((chip) => {
+    chip.hidden = true;
   });
-  el.catChips.append(chip);
+
+  const form = document.createElement('form');
+  form.className = 'chip-form';
+  form.noValidate = true;
+
+  const input = document.createElement('input');
+  input.className = 'chip-input';
+  input.type = 'text';
+  input.maxLength = 20;
+  input.autocomplete = 'off';
+  input.placeholder = 'Name it';
+  input.setAttribute('aria-label', 'New category name');
+
+  const confirm = document.createElement('button');
+  confirm.type = 'submit';
+  confirm.className = 'chip-confirm';
+  confirm.textContent = 'Add';
+
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'chip-cancel';
+  cancel.textContent = 'Cancel';
+  cancel.addEventListener('click', () => closeNewCat(true));
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    addCategory(input.value);
+  });
+  form.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeNewCat(true);
+  });
+
+  form.append(input, confirm, cancel);
+  el.catChips.append(form);
+  input.focus();
+}
+
+function closeNewCat(focusAdd) {
+  const form = el.catChips.querySelector('.chip-form');
+  if (!form) return;
+  form.remove();
+  el.catChips.querySelectorAll('.chip').forEach((chip) => {
+    chip.hidden = false;
+  });
+  if (focusAdd) {
+    const add = el.catChips.querySelector('.chip-new');
+    if (add) add.focus();
+  }
+}
+
+function addCategory(value) {
+  const label = String(value).trim().replace(/\s+/g, ' ').slice(0, 20);
+  if (!label) {
+    closeNewCat(true);
+    return null;
+  }
+
+  const existing = allCats().find((c) => c.label.toLowerCase() === label.toLowerCase());
+  closeNewCat(false);
+
+  if (existing) {
+    selectedCat = existing.id;
+    paintChips();
+    return existing.id;
+  }
+
+  const cat = { id: `c-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, label, tone: nextTone() };
+  state.cats.push(cat);
+  selectedCat = cat.id;
+  save();
+  renderChips();
+  render();
+  return cat.id;
 }
 
 /* ── Month paging ──────────────────────────────────────── */
@@ -537,7 +699,7 @@ function openSheet(item) {
   whenView = whenISO.slice(0, 7);
   closeWhen();
   renderWhen();
-  paintChips();
+  renderChips();
   window.setTimeout(() => {
     el.amount.focus();
     if (item) el.amount.select();
@@ -609,7 +771,7 @@ el.form.addEventListener('submit', (event) => {
     return;
   }
 
-  const cat = CATS.some((c) => c.id === selectedCat) ? selectedCat : 'other';
+  const cat = catInfo(selectedCat) ? selectedCat : 'other';
   const date = whenISO > todayISO() ? todayISO() : whenISO;
   const note = el.note.value.trim().slice(0, 80) || catLabel(cat);
   const time = minutesToHHMM(whenMin);
@@ -704,12 +866,15 @@ el.items.addEventListener('click', (event) => {
 
   if (del) {
     const id = del.dataset.id;
-    if (!armedRow || armedRow.id !== id) {
+    // The armed row only counts while that same row is still on screen. A list
+    // that re-rendered underneath it starts fresh, so one tap can never delete.
+    if (!armedRow || armedRow.id !== id || armedRow.li !== li || !li.isConnected) {
       armRow(li, id);
       return;
     }
+    const rowNode = li;
     disarmRow();
-    removeItem(id, li);
+    removeItem(id, rowNode);
     return;
   }
 
@@ -747,6 +912,64 @@ el.budget.addEventListener('keydown', (event) => {
     el.budget.blur();
   }
 });
+
+/* ── Delete everything: long-press the wordmark ────────── */
+
+function wipeAll() {
+  cancelPress();
+  if (typeof store.clear === 'function') {
+    try {
+      store.clear();
+    } catch {
+      /* the in-memory reset below still applies */
+    }
+  }
+  state = { items: [], budgets: {}, cats: [] };
+  month = todayMonth();
+  filter = 'all';
+  selectedCat = 'food';
+  editingId = null;
+  whenISO = todayISO();
+  whenMin = nowMinutes();
+  whenView = whenISO.slice(0, 7);
+  closeNewCat(false);
+  renderChips();
+  render();
+  toast('Everything deleted');
+}
+
+let pressTimer = 0;
+let pressAt = null;
+
+function cancelPress() {
+  window.clearTimeout(pressTimer);
+  pressTimer = 0;
+  pressAt = null;
+}
+
+el.wordmark.addEventListener('pointerdown', (event) => {
+  if (event.button !== undefined && event.button !== 0) return;
+  cancelPress();
+  pressAt = { x: event.clientX, y: event.clientY };
+  pressTimer = window.setTimeout(() => {
+    pressTimer = 0;
+    pressAt = null;
+    if (navigator.vibrate) navigator.vibrate(8);
+    toast('Delete everything?', 'Delete', wipeAll);
+  }, 620);
+});
+
+el.wordmark.addEventListener('pointermove', (event) => {
+  if (!pressAt) return;
+  if (Math.abs(event.clientX - pressAt.x) > 8 || Math.abs(event.clientY - pressAt.y) > 8) cancelPress();
+});
+
+for (const type of ['pointerup', 'pointercancel', 'pointerleave']) {
+  el.wordmark.addEventListener(type, cancelPress);
+}
+
+// A long press on text would otherwise raise the system selection menu.
+el.wordmark.addEventListener('contextmenu', (event) => event.preventDefault());
 
 window.addEventListener('resize', moveInk);
 
