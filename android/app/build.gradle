@@ -7,7 +7,7 @@ android {
         applicationId "com.spent.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode (project.findProperty("spentVersionCode") ?: "1").toString().toInteger()
+        versionCode (project.findProperty('spentVersionCode') ?: System.getenv('SPENT_VERSION_CODE') ?: '102').toInteger()
         versionName (project.findProperty("spentVersionName") ?: "0.1.0").toString()
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
