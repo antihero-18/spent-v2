@@ -17,13 +17,32 @@
 <header class="top">
   <div class="wrap top-in">
     <p class="wordmark" id="wordmark">Spent</p>
-    <p class="top-note">Kept on this device</p>
+    <div class="top-meta">
+      <button class="top-currency" id="currencyBtn" type="button" aria-expanded="false" aria-controls="currencyPop">USD $</button>
+      <span class="top-sep" aria-hidden="true">·</span>
+      <p class="top-note">Kept on this device</p>
+    </div>
+    <div class="cur-pop" id="currencyPop" hidden>
+      <div class="cal-head">
+        <p class="cal-title">Currency</p>
+        <button class="cal-close" id="currencyClose" type="button">Close</button>
+      </div>
+      <div class="cur-grid" id="currencyGrid" role="group" aria-label="Preset currencies"></div>
+      <form class="cur-custom" id="currencyCustomForm" novalidate>
+        <input class="cur-input" id="customSymbol" type="text" maxlength="4" autocomplete="off" placeholder="Custom symbol" aria-label="Custom currency symbol">
+        <div class="cur-dec" role="group" aria-label="Decimal places">
+          <button class="cur-dec-btn" id="dec2Btn" type="button" aria-pressed="true">.00</button>
+          <button class="cur-dec-btn" id="dec0Btn" type="button" aria-pressed="false">0</button>
+        </div>
+        <button class="cur-save" type="submit">Use</button>
+      </form>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
   <div id="page">
-    <section class="period" aria-labelledby="monthLabel">
+    <div class="period-top">
       <div class="period-head">
         <button class="arrow" id="prev" type="button" aria-label="Previous month">&#8592;</button>
         <h1 class="month-head">
@@ -49,52 +68,94 @@
           </div>
         </div>
       </div>
+    </div>
 
-      <div class="figure">
-        <div class="figure-main">
-          <p class="figure-label">This month</p>
-          <p class="figure-total" id="total">$0.00</p>
-          <p class="figure-lede" id="lede">Nothing logged yet</p>
+    <div class="swipe-viewport" id="swipeViewport">
+      <div class="swipe-track" id="swipeTrack">
+        <div class="month-panel" id="prevPanel" aria-hidden="true"></div>
+
+        <div class="month-panel" id="currPanel">
+          <section class="period" aria-labelledby="monthLabel">
+            <div class="figure">
+              <div class="figure-main">
+                <p class="figure-label">This month</p>
+                <p class="figure-total" id="total">$0.00</p>
+                <p class="figure-lede" id="lede">Nothing logged yet</p>
+                <p class="figure-mom" id="momDelta" hidden></p>
+              </div>
+              <button class="ring" id="ringWrap" type="button" aria-label="No budget set">
+                <svg viewBox="0 0 80 80" aria-hidden="true" focusable="false">
+                  <circle class="ring-track" cx="40" cy="40" r="32"></circle>
+                  <circle class="ring-fill" id="ring" cx="40" cy="40" r="32"></circle>
+                </svg>
+                <span class="ring-note" id="ringPct">0%</span>
+              </button>
+            </div>
+
+            <div class="budgetline">
+              <div class="budget-row">
+                <label for="budget">Monthly budget</label>
+                <div class="budget-field">
+                  <span id="budgetPrefix" aria-hidden="true">$</span>
+                  <input id="budget" type="text" inputmode="decimal" autocomplete="off" placeholder="—" aria-describedby="left">
+                </div>
+              </div>
+              <div class="budget-sub">
+                <p class="budget-left" id="left">No budget set</p>
+                <button class="sub-link" id="recurringBtn" type="button">Recurring</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="where" aria-labelledby="whereLabel">
+            <div class="where-head">
+              <h2 class="section-label" id="whereLabel">Where it went</h2>
+              <div class="seg-toggle" role="group" aria-label="Insights view">
+                <button class="seg-btn" id="viewBreakBtn" type="button" aria-pressed="true">Breakdown</button>
+                <button class="seg-btn" id="viewTrendBtn" type="button" aria-pressed="false">6-mo trend</button>
+              </div>
+            </div>
+            <div id="breakdownWrap">
+              <div class="split" id="split"></div>
+              <ul class="legend" id="legend"></ul>
+              <p class="muted-line" id="whereEmpty">Nothing to break down yet.</p>
+            </div>
+            <div id="trendWrap" hidden>
+              <div class="trend-bars" id="trendBars" role="group" aria-label="Monthly spending trend"></div>
+              <p class="trend-note" id="trendNote"></p>
+            </div>
+          </section>
+
+          <section class="listing" id="list" aria-labelledby="listLabel">
+            <div class="listing-head">
+              <h2 class="section-label" id="listLabel">Expenses</h2>
+              <div class="listing-tools">
+                <button class="tool-btn" id="searchToggle" type="button" aria-expanded="false" aria-controls="searchRow">Search</button>
+                <span class="top-sep" aria-hidden="true">·</span>
+                <button class="tool-btn" id="sortBtn" type="button" aria-label="Sort expenses">Newest</button>
+                <span class="top-sep" aria-hidden="true">·</span>
+                <p class="listing-count" id="count"></p>
+              </div>
+            </div>
+            <div class="search-row" id="searchRow" hidden>
+              <input class="search-input" id="searchInput" type="search" autocomplete="off" placeholder="Search notes, categories, amounts" aria-label="Search expenses">
+              <div class="search-scope" role="group" aria-label="Search scope">
+                <button class="scope-btn" id="scopeMonthBtn" type="button" aria-pressed="true">Month</button>
+                <button class="scope-btn" id="scopeAllBtn" type="button" aria-pressed="false">All</button>
+              </div>
+              <button class="search-clear" id="searchClear" type="button" aria-label="Clear search" hidden>×</button>
+            </div>
+            <nav class="tabs" id="tabs" aria-label="Filter expenses by category">
+              <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
+            </nav>
+            <ul class="items" id="items"></ul>
+            <p class="empty" id="empty">No expenses yet. Add the first one.</p>
+          </section>
         </div>
-        <button class="ring" id="ringWrap" type="button" aria-label="No budget set">
-          <svg viewBox="0 0 80 80" aria-hidden="true" focusable="false">
-            <circle class="ring-track" cx="40" cy="40" r="32"></circle>
-            <circle class="ring-fill" id="ring" cx="40" cy="40" r="32"></circle>
-          </svg>
-          <span class="ring-note" id="ringPct">0%</span>
-        </button>
-      </div>
 
-      <div class="budgetline">
-        <div class="budget-row">
-          <label for="budget">Monthly budget</label>
-          <div class="budget-field">
-            <span aria-hidden="true">$</span>
-            <input id="budget" type="text" inputmode="decimal" autocomplete="off" placeholder="—" aria-describedby="left">
-          </div>
-        </div>
-        <p class="budget-left" id="left">No budget set</p>
+        <div class="month-panel" id="nextPanel" aria-hidden="true"></div>
       </div>
-    </section>
-
-    <section class="where" aria-labelledby="whereLabel">
-      <h2 class="section-label" id="whereLabel">Where it went</h2>
-      <div class="split" id="split"></div>
-      <ul class="legend" id="legend"></ul>
-      <p class="muted-line" id="whereEmpty">Nothing to break down yet.</p>
-    </section>
-
-    <section class="listing" id="list" aria-labelledby="listLabel">
-      <div class="listing-head">
-        <h2 class="section-label" id="listLabel">Expenses</h2>
-        <p class="listing-count" id="count"></p>
-      </div>
-      <nav class="tabs" id="tabs" aria-label="Filter expenses by category">
-        <span class="tab-ink" id="tabInk" aria-hidden="true"></span>
-      </nav>
-      <ul class="items" id="items"></ul>
-      <p class="empty" id="empty">No expenses yet. Add the first one.</p>
-    </section>
+    </div>
   </div>
 </main>
 
@@ -118,8 +179,8 @@
     </div>
 
     <div class="amount-line">
-      <span class="amount-currency" aria-hidden="true">$</span>
-      <input id="amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" maxlength="12" aria-label="Amount" aria-describedby="amountErr">
+      <span class="amount-currency" id="amountCurrency" aria-hidden="true">$</span>
+      <input id="amount" name="amount" type="text" inputmode="decimal" autocomplete="off" placeholder="0.00" maxlength="18" aria-label="Amount" aria-describedby="amountErr">
     </div>
     <p class="err" id="amountErr" hidden></p>
 
@@ -161,11 +222,35 @@
       </div>
     </div>
 
+    <div class="line repeat-line" id="repeatRow">
+      <span class="line-label">Repeat</span>
+      <div class="repeat-seg" id="repeatSeg" role="group" aria-label="Repeat frequency">
+        <button class="rep-btn" type="button" data-freq="never" aria-pressed="true">Never</button>
+        <button class="rep-btn" type="button" data-freq="weekly" aria-pressed="false">Weekly</button>
+        <button class="rep-btn" type="button" data-freq="monthly" aria-pressed="false">Monthly</button>
+        <button class="rep-btn" type="button" data-freq="yearly" aria-pressed="false">Yearly</button>
+      </div>
+    </div>
+
     <p class="chips-label" id="chipsLabel">Category</p>
     <div class="chips" id="catChips" role="group" aria-labelledby="chipsLabel"></div>
 
     <button class="btn" type="submit">Add expense</button>
   </form>
+</section>
+
+<section class="sheet" id="recSheet" role="dialog" aria-modal="true" aria-labelledby="recTitle" hidden>
+  <div class="rec-inner">
+    <div class="grab" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="recTitle">Recurring</h2>
+      <button class="sheet-close" id="recClose" type="button">Close</button>
+    </div>
+    <p class="rec-summary" id="recSummary">No recurring expenses yet.</p>
+    <ul class="rec-list" id="recList"></ul>
+    <p class="empty" id="recEmpty">Set any expense to Weekly, Monthly, or Yearly to log it automatically.</p>
+    <button class="btn" id="recAddBtn" type="button">Add recurring expense</button>
+  </div>
 </section>
 
 <div class="toast" id="toast">

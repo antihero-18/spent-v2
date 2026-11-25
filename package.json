@@ -5,6 +5,10 @@
   "description": "Spent — a small expense tracker, kept plainly.",
   "license": "MIT",
   "scripts": {
+    "dev": "npm run build:web && node server.js",
+    "build": "npm run build:web",
+    "start": "node server.js",
+    "lint": "node --check server.js && node --check storage.js && node --check spent.js && node --check scripts/build-web.mjs",
     "build:web": "node scripts/build-web.mjs",
     "icons": "npx capacitor-assets generate --android --assetPath resources && node scripts/android-icons.mjs",
     "sync": "npm run build:web && npx cap sync android",
@@ -17,7 +21,8 @@
     "@capacitor/core": "^8.0.0",
     "@capacitor/keyboard": "^8.0.0",
     "@capacitor/splash-screen": "^8.0.0",
-    "@capacitor/status-bar": "^8.0.0"
+    "@capacitor/status-bar": "^8.0.0",
+    "express": "^5.3.0"
   },
   "devDependencies": {
     "@capacitor/assets": "^3.0.0",
