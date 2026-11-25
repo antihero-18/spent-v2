@@ -81,6 +81,7 @@ jobs:
       - name: Assemble release APK
         working-directory: android
         run: |
+          chmod +x gradlew
           ./gradlew assembleRelease --no-daemon \
             -PspentVersionName="${SPENT_VERSION_NAME}" \
             -PspentVersionCode="${SPENT_VERSION_CODE}"
