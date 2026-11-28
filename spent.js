@@ -2194,9 +2194,13 @@ function renderRecurringSheet() {
   );
 }
 
+let recCloseTimer = 0;
+
 function openRecSheet() {
+  window.clearTimeout(recCloseTimer);
   lastFocus = document.activeElement;
   recOpen = true;
+  resetSheetDragStyles(el.recSheet);
   renderRecurringSheet();
   el.recSheet.hidden = false;
   el.scrim.hidden = false;
@@ -2214,10 +2218,12 @@ function closeRecSheet() {
   el.recSheet.classList.remove('open');
   el.scrim.classList.remove('show');
   document.body.style.overflow = '';
-  window.setTimeout(() => {
+  window.clearTimeout(recCloseTimer);
+  recCloseTimer = window.setTimeout(() => {
+    resetSheetDragStyles(el.recSheet);
     el.recSheet.hidden = true;
     if (!sheetOpen) el.scrim.hidden = true;
-  }, 240);
+  }, 340);
   if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
 }
 
@@ -2387,11 +2393,217 @@ function commitCalcEquals() {
 
 /* ── Sheet ─────────────────────────────────────────────── */
 
+let sheetCloseTimer = 0;
+
+function resetSheetDragStyles(sheetEl) {
+  if (!sheetEl) return;
+  sheetEl.classList.remove('dragging');
+  sheetEl.style.transform = '';
+  sheetEl.style.transition = '';
+  if (el.scrim) {
+    el.scrim.classList.remove('dragging');
+    el.scrim.style.opacity = '';
+    el.scrim.style.transition = '';
+  }
+}
+
+function attachSheetDrag(sheetEl, isOpenFn, onDismiss) {
+  if (!sheetEl) return;
+  const g = {
+    source: null,
+    pointerId: null,
+    zone: null,
+    startX: 0,
+    startY: 0,
+    dragStartY: 0,
+    dy: 0,
+    locked: null,
+    samples: [],
+  };
+
+  function zoneForTarget(target, allowBody) {
+    if (!isOpenFn() || !target || typeof target.closest !== 'function') return null;
+    if (target.closest('button, input, textarea, select, a, .calc-pad, .when-panel')) return null;
+    if (target.closest('.grab, .sheet-head')) return 'handle';
+    if (allowBody && sheetEl.scrollTop <= 1) return 'body';
+    return null;
+  }
+
+  function begin(source, pointerId, clientX, clientY, target, allowBody) {
+    const zone = zoneForTarget(target, allowBody);
+    if (!zone) return false;
+    g.source = source;
+    g.pointerId = pointerId;
+    g.zone = zone;
+    g.startX = clientX;
+    g.startY = clientY;
+    g.dragStartY = clientY;
+    g.dy = 0;
+    g.locked = null;
+    g.samples = [{ y: clientY, t: performance.now() }];
+    return true;
+  }
+
+  function update(clientX, clientY, preventDefaultFn) {
+    if (!g.source || g.locked === 'ignore') return false;
+    const rawDx = clientX - g.startX;
+    const rawDy = clientY - g.startY;
+
+    if (g.locked === null) {
+      if (Math.hypot(rawDx, rawDy) < 6) return false;
+      if (Math.abs(rawDx) > Math.abs(rawDy) * 1.15) {
+        g.locked = 'ignore';
+        return false;
+      }
+      if (g.zone === 'body' && (rawDy <= 0 || sheetEl.scrollTop > 1)) {
+        g.locked = 'ignore';
+        return false;
+      }
+      g.locked = 'drag';
+      g.dragStartY = clientY;
+      if (document.activeElement && sheetEl.contains(document.activeElement) && typeof document.activeElement.blur === 'function') {
+        const tag = document.activeElement.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') document.activeElement.blur();
+      }
+      sheetEl.classList.add('dragging');
+      el.scrim.classList.add('dragging');
+      sheetEl.style.transition = 'none';
+      el.scrim.style.transition = 'none';
+    }
+
+    if (g.locked !== 'drag') return false;
+    if (preventDefaultFn) preventDefaultFn();
+
+    const delta = clientY - g.dragStartY;
+    const dy = delta < 0 ? Math.max(-28, delta * 0.16) : delta;
+    g.dy = dy;
+
+    const now = performance.now();
+    g.samples.push({ y: clientY, t: now });
+    const cutoff = now - 100;
+    while (g.samples.length > 2 && g.samples[0].t < cutoff) {
+      g.samples.shift();
+    }
+
+    sheetEl.style.transform = `translate3d(0, ${dy}px, 0)`;
+    const h = sheetEl.offsetHeight || 420;
+    const progress = Math.max(0, Math.min(1, dy / h));
+    el.scrim.style.opacity = String(Math.max(0, 1 - progress));
+    return true;
+  }
+
+  function finish(cancelled = false) {
+    if (!g.source) return;
+    const wasDrag = g.locked === 'drag';
+    const dy = g.dy;
+    let vy = 0;
+    if (g.samples.length >= 2) {
+      const first = g.samples[0];
+      const last = g.samples[g.samples.length - 1];
+      const dt = last.t - first.t;
+      if (dt > 0) vy = (last.y - first.y) / dt;
+    }
+
+    g.source = null;
+    g.pointerId = null;
+    g.zone = null;
+    g.locked = null;
+    g.samples = [];
+
+    if (!wasDrag) return;
+
+    const h = sheetEl.offsetHeight || 420;
+    const threshold = Math.min(140, h * 0.28);
+    const shouldDismiss = !cancelled && (dy > threshold || (vy > 0.45 && dy > 24));
+
+    sheetEl.classList.remove('dragging');
+    el.scrim.classList.remove('dragging');
+    sheetEl.style.transition = '';
+    el.scrim.style.transition = '';
+    void sheetEl.offsetHeight;
+    sheetEl.style.transform = '';
+    el.scrim.style.opacity = '';
+    if (shouldDismiss) onDismiss();
+  }
+
+  sheetEl.addEventListener(
+    'touchstart',
+    (event) => {
+      if (event.touches.length !== 1) {
+        if (g.source === 'touch') finish(true);
+        return;
+      }
+      const t = event.touches[0];
+      begin('touch', null, t.clientX, t.clientY, event.target, true);
+    },
+    { passive: true }
+  );
+
+  sheetEl.addEventListener(
+    'touchmove',
+    (event) => {
+      if (g.source !== 'touch' || event.touches.length !== 1) return;
+      const t = event.touches[0];
+      update(t.clientX, t.clientY, () => {
+        if (event.cancelable) event.preventDefault();
+      });
+    },
+    { passive: false }
+  );
+
+  sheetEl.addEventListener(
+    'touchend',
+    () => {
+      if (g.source === 'touch') finish(false);
+    },
+    { passive: true }
+  );
+
+  sheetEl.addEventListener(
+    'touchcancel',
+    () => {
+      if (g.source === 'touch') finish(true);
+    },
+    { passive: true }
+  );
+
+  sheetEl.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'touch' || event.button !== 0) return;
+    if (g.source === 'touch') return;
+    if (begin('pointer', event.pointerId, event.clientX, event.clientY, event.target, event.pointerType !== 'mouse')) {
+      if (typeof sheetEl.setPointerCapture === 'function') {
+        try {
+          sheetEl.setPointerCapture(event.pointerId);
+        } catch {}
+      }
+    }
+  });
+
+  window.addEventListener('pointermove', (event) => {
+    if (g.source !== 'pointer' || event.pointerId !== g.pointerId) return;
+    update(event.clientX, event.clientY, () => {
+      if (event.cancelable) event.preventDefault();
+    });
+  });
+
+  window.addEventListener('pointerup', (event) => {
+    if (g.source !== 'pointer' || event.pointerId !== g.pointerId) return;
+    finish(false);
+  });
+
+  window.addEventListener('pointercancel', (event) => {
+    if (g.source !== 'pointer' || event.pointerId !== g.pointerId) return;
+    finish(true);
+  });
+}
+
 function openSheet(item, defaultRepeat = 'never') {
+  window.clearTimeout(sheetCloseTimer);
   lastFocus = document.activeElement;
   editingId = item ? item.id : null;
   if (!el.currencyPop.hidden) closeCurrencyPop();
   if (!el.backupPop.hidden) closeBackupPop();
+  resetSheetDragStyles(el.sheet);
   el.sheet.hidden = false;
   el.scrim.hidden = false;
   document.body.style.overflow = 'hidden';
@@ -2438,12 +2650,17 @@ function closeSheet() {
   el.sheet.classList.remove('open');
   el.scrim.classList.remove('show');
   document.body.style.overflow = '';
-  window.setTimeout(() => {
+  window.clearTimeout(sheetCloseTimer);
+  sheetCloseTimer = window.setTimeout(() => {
+    resetSheetDragStyles(el.sheet);
     el.sheet.hidden = true;
     if (!recOpen) el.scrim.hidden = true;
-  }, 320);
+  }, 340);
   if (lastFocus && typeof lastFocus.focus === 'function') lastFocus.focus();
 }
+
+attachSheetDrag(el.sheet, () => sheetOpen, closeSheet);
+attachSheetDrag(el.recSheet, () => recOpen, closeRecSheet);
 
 el.openSheet.addEventListener('click', () => openSheet());
 el.cancel.addEventListener('click', closeSheet);
